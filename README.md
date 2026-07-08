@@ -1,129 +1,113 @@
-# agent_client
+# pub_client
 
-連線到 single_agent / RAG 平台（`agents` 服務 :18080）的 Windows 桌面 client。
-Go + [Fyne](https://fyne.io) v2.4.5 + HypGo v0.8.11（logger / errors / schema）。
+外網版 Windows 桌面 client。**所有後端流量都走單一 gRPC 連線**到 `agent_gateway`
+（dev_pub_0.9），gateway 再以內部 mTLS/HTTP 轉發給後端的 agents / agent_graph / agent_embedding。
 
-## 功能
+Go + [Fyne](https://fyne.io) v2.4.5 + HypGo v0.8.11。內網管理版是姊妹專案 `rag_admin/`
+（原名 agent_client，含 Models / Graph Input 等管理面），本專案是外網使用者版，僅保留一般使用者功能。
 
-| 分頁 | 說明 | 對接後端 |
-|------|------|----------|
-| **對話** | 與 agent 同步對話；agent 要求時於本機執行已登錄工具（回合制）；**Normal／Code 模式切換按鈕** | `POST /api/chat` |
-| **上傳文件** | 選 PDF / 圖片 / 文字 → 上傳攝取 → 輪詢進度 | `POST /api/ingest/upload`、`GET /api/ingest/jobs/:id` |
-| **工具** | 登錄 / 編輯 / 刪除本地可執行工具（command + argv 樣板 + JSON Schema） | （manifest 隨對話送出） |
-| **設定** | Agent Base URL、Agent ID、自簽 TLS、**Coding 工作目錄** | — |
-| **(內建) Coding Agent** | 工作目錄已設 **且** 對話頁切到 Code 模式時才啟用：agent 可讀檔/列目錄/搜尋/編輯/寫檔，**寫入前強制彈 diff 給你審核**；Normal 模式下完全不會出現，不會進入編輯狀態 | （manifest 隨對話送出，見下方專節） |
-
-使用者設定持久化於 `%APPDATA%\agent_client\config.json`；runtime 設定（logger）在 `app/config/config.yaml`。
-
-## 目錄結構（HypGo 風格）
+## 網路架構
 
 ```
-agent_client/
-  main.go                    # RegisterSchemas() → views.Run()
-  app/
-    models/                  # 資料結構
-      config.go              #   Config + ToolSpec + %APPDATA% 持久化
-      chat.go                #   /api/chat、/api/ingest 的 DTO
-    services/                # 業務邏輯（views 不直接做 I/O）
-      api_service.go         #   APIClient：Chat / Upload(multipart) / GetJob
-      chat_service.go        #   ChatEngine：對話回合制引擎（工具迴圈，上限 12 回合）
-      tool_service.go        #   本地工具執行：manifest / find / execute（argv 樣板）
-      code_service.go        #   內建 Coding Agent 工具：read/list/search/edit/write + diff 審核
-      errors.go              #   typed error catalog（E3001–E3005，hypgo/pkg/errors）
-    views/                   # Fyne 畫面
-      main_view.go           #   State + logger + 四分頁組裝
-      chat_view.go / upload_view.go / tools_view.go / settings_view.go
-      diff_dialog.go         #   showDiffApproval()：寫入前的 diff 審核彈窗
-      schema.go              #   schema.RegisterDesktop()（Protocol "desktop"）
-    config/config.yaml       # logger 區段（桌面 app 不開 HTTP server）
-  tools/genctx/              # CLI：產生 .hyp/context.yaml（Schema manifest，可 LLM 增強）
-  .hyp/                      # hypgo 工具鏈設定（config / llm / context / comment）
+pub_client
+   │ gRPC + TLS
+   │ metadata: x-api-key + x-device-id + x-device-info
+   ▼
+agent_gateway :9090 (ClientGateway)
+   ├── agents        (Chat / ChatStatus / ChatImage / UploadIngest / GetIngestJob / Personas)
+   ├── agent_graph   (GraphSearch / Context / HybridSearch / Proposed×3)
+   └── agent_embedding (VerifySearch)
 ```
+
+**認證**：`gateway apikey create` 產生 `sak_…` 明文（DB 只存 SHA-256），首次呼叫綁定裝置
+（TOFU，SHA-256(MachineGuid+username)）；同一 key 只綁一台裝置，換機需在部署機 `gateway apikey unbind`。
+
+## 使用的 ClientGateway RPC
+
+| 分頁 / 功能 | RPC | 說明 |
+|-------------|-----|------|
+| 設定頁 Test Connection | `Ping` | 同時驗 API Key + 傳回綁定 key 名稱 + RTT |
+| 對話 | `Chat` | 同步對話 + client 端工具回合制（continuation） |
+| 對話（狀態列） | `ChatStatus` | 每秒輪詢，顯示 server 正處理的 Agent 1-4 階段（例 `Agent 2 · ToolLoop (3s)`） |
+| 對話（附圖） | `ChatImage` | 送圖 → server 視覺模型抽文字 + ingest 進 RAG，文字併入本輪訊息 |
+| 上傳 | `UploadIngest` (streaming) / `GetIngestJob` | 檔案分塊上傳 + 攝取任務進度輪詢 |
+| 知識圖譜 | `GraphSearch` / `GraphContext` / `GraphHybridSearch` | 關鍵字搜尋 / 語意搜尋 / 區域鄰居 |
+| 圖譜審核（Pending Relations） | `GraphListProposed` / `GraphApproveProposed` / `GraphRejectProposed` | 人工核准低信心關係 |
+| 驗證檢索（上傳後） | `VerifySearch` | 內部 HTTPS 打 agent_embedding |
+
+**啟動時健康檢查**：視窗進入前景後 goroutine `HealthCheck` ping gateway；`Unavailable`/`DeadlineExceeded`
+→ 跳警示「**RAG主機已關機**」（`Unauthenticated` 不算關機，只是 key 問題）。時機延到 lifecycle
+`OnEnteredForeground`，避免 Fyne painter 未就緒導致 CJK 對話框顯示成豆腐。
+
+## 分頁
+
+| 分頁 | 說明 |
+|------|------|
+| **Chat** | 同步對話、client 工具回合制、Normal／Code 模式切換、附加圖片（縮圖列，左上 X 移除、點縮圖看原尺寸）、狀態列顯示目前 Agent 階段 |
+| **Upload** | 多選檔案（**Windows 原生檔案總管**）+ tags → 上傳攝取 → 輪詢進度 |
+| **Tools** | 登錄/編輯/刪除本地可執行工具（argv 樣板 + JSON Schema） |
+| **Knowledge Graph** | 進頁即載入最近 15 個實體；關鍵字/語意搜尋、選中查看區域鄰居；Pending Relations 子分頁做人工審核 |
+| **Settings** | Gateway Address、API Key（PasswordEntry）、Agent ID（下拉/自填）、TLS、Coding 工作目錄、溫度、Test Connection |
+
+> **不含**「Models」與「Graph Input」分頁 —— 那是內網 `rag_admin/` 的職責（外網 client 不提供
+> 直接改 persona 模型 / 直接寫圖譜的能力）。
+
+## 儲存（DuckDB 加密庫）
+
+設定（gateway 位址 / API Key / device_id / 工具清單…）與對話 session 全部存在單一
+**加密 DuckDB 檔** `%APPDATA%\pub_client\store.duckdb`（DuckDB `ATTACH ENCRYPTION_KEY`，AES）。
+金鑰來源優先序：
+1. 機器特徵（`services.StableDeviceID` 同源：SHA-256(MachineGuid+username)）—— 不落地、跨重裝穩定；DB 檔被單獨複製走無法解開
+2. Fallback：`%APPDATA%\pub_client\store.key`（隨機 32 bytes）—— 取不到機器特徵時才產生
+
+首次啟動會**一次性遷移**舊的 `config.json` / `sessions/*.md`（如果存在）→ DuckDB。舊檔保留不刪。
 
 ## 建置需求
 
-Fyne 預設 GL driver 需要 **CGO**；Windows 上需安裝 gcc（MinGW-w64）。本機已驗證可建置（go 1.26 + MinGW-w64 UCRT gcc 15）。
+Fyne 預設 GL driver 需要 **CGO** + Windows gcc（MinGW-w64）；已驗證 Go 1.26 + MinGW-w64 UCRT gcc 15。
 
 ```powershell
-cd D:\GoProjects\single_agent\agent_client
-go build -o agent_client.exe .
-.\agent_client.exe
+cd D:\GoProjects\single_agent\pub_client
+.\build.ps1        # go build -ldflags "-H=windowsgui" -o pub_client.exe .（無 console 視窗）
+.\pub_client.exe
 ```
 
-測試與 manifest：
-
+測試：
 ```powershell
-go test ./...            # tool_service 單元測試（argv 套版 / timeout / manifest）
-go run ./tools/genctx    # 重新產生 .hyp/context.yaml
+go test ./...
 ```
 
-## 本地工具如何運作（client 端執行）
+## Gateway Address 小提醒
 
-1. 在「工具」頁登錄工具：名稱、描述、**命令**（可執行檔）、**參數樣板**（每行一個 argv，用 `{{參數名}}` 代入）、**參數 Schema**（JSON Schema object）。
-2. 每次對話時，這些工具的 name/description/schema 會作為 `client_tools` 送給 agent。
-3. agent（LLM）若決定呼叫某工具，後端回 `status=tool_calls` + `continuation_id`；client 在本機執行（`exec.Command`，**不經 shell**），把 stdout/stderr 以 `tool_results` 回送；後端接續推理直到 `final`。
+Gateway Address 是 **gRPC** 目標，格式 `host:port`（例 `192.168.50.104:9090`）。若貼上帶 `https://`
+的 URL，client 會自動去掉 scheme 再連（`normalizeGatewayAddr`），避免 gRPC 誤把整串當主機名再補
+`:443` 而報 `too many colons in address`。
 
-### 安全
-- 只執行使用者明確登錄的工具（allowlist）。
-- 參數以 argv 陣列代入，不做 shell 字串插值（避免注入）。
-- 可勾選「執行前需我確認」，每次執行前彈確認框。
-- 每個工具有硬性逾時（預設 30s）。
+## 本地工具與 Coding Agent
 
-### 範例工具（Windows echo）
-| 欄位 | 值 |
-|------|----|
-| 名稱 | `echo` |
-| 命令 | `cmd` |
-| 參數樣板 | `/c`<br>`echo {{text}}` |
-| 參數 Schema | `{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}` |
+跟 rag_admin 一樣：Tools 頁登錄的本地工具會以 `client_tools` manifest 隨每輪首請求送給 agent；
+agent 決定呼叫時，client 在本機 `exec.CommandContext` 執行後把結果經 `Chat` 的 continuation 回注。
+Normal/Code 模式切換、內建 Coding Agent（`code_list_files` / `code_search` / `code_read_file` /
+`code_edit_file` / `code_write_file`，寫入前 diff 審核）語意完全一致，詳見 `rag_admin/README.md`。
 
-### 視窗（GUI）工具怎麼用
+**視窗程式**（記事本、瀏覽器等 GUI）勾選「視窗程式」→ `Background=true` → `cmd.Start()` 不等待、
+不套 timeout；一般命令列工具走 `exec.CommandContext` 等待完成，argv 樣板不經 shell 插值，預設 30s 逾時。
 
-一般工具用 `exec.Command` 執行並**等待它結束**才回傳結果（記事本、小畫家、瀏覽器這類程式不會自己結束，等到逾時就會被砍掉、回傳 timeout 錯誤）。
+## 幾個 UI 細節
 
-登錄時勾選「**視窗程式（只負責開啟，不等待關閉）**」（`ToolSpec.Background`），executor 改用 `cmd.Start()`：啟動後立刻回傳成功，不等待、不套用逾時，視窗會正常留著讓你操作。
-
-範例（開記事本）：
-| 欄位 | 值 |
-|------|----|
-| 名稱 | `open_notepad` |
-| 命令 | `notepad` |
-| 參數樣板 | `{{path}}`（可留空） |
-| 參數 Schema | `{"type":"object","properties":{"path":{"type":"string","description":"要開啟的檔案路徑，可空"}}}` |
-| 視窗程式 | ☑ |
-
-## 內建 Coding Agent（讀檔 / 搜尋 / 編輯，diff 審核後套用）
-
-「工具」頁是使用者手動登錄任意命令列程式；**Coding Agent 是內建的**，不用登錄。啟用需要**兩個條件同時成立**：
-
-1. 「設定」頁選好**工作目錄**
-2. 「對話」頁的模式切換按鈕切到 **💻 Code 模式**（預設是 **🔧 Normal 模式**，即使已設工作目錄也不會生效）
-
-**Normal 模式**下 agent 完全看不到、也不可能呼叫這些工具——只會用「工具」頁登錄的一般命令列工具或指令；**不會進入任何編輯狀態**。切到 **Code 模式**才會把碼工具交給 agent。若還沒設工作目錄就點切換，會提示先去設定頁選。
-
-比照 Claude Code 的 Read/Grep/Edit/Write 語意，Code 模式下 agent 可以：
-
-| 工具 | 用途 | 需要審核？ |
-|------|------|:---:|
-| `code_list_files` | 列出某相對目錄下的檔案/子目錄 | 否 |
-| `code_search` | 遞迴文字搜尋（不分大小寫） | 否 |
-| `code_read_file` | 讀檔內容，可用 `offset`/`limit` 分段讀取大檔 | 否 |
-| `code_edit_file` | `old_string` → `new_string` 精確字串替換 | **是** |
-| `code_write_file` | 整檔覆寫 / 建立新檔 | **是** |
-
-**安全設計**：
-- **雙重開關**：未設工作目錄，或設了但停留在 Normal 模式，manifest 都不會帶這些工具給 agent。
-- 所有路徑都被限制在工作目錄之內，`..` 逃逸會被明確拒絕（不會靜默改寫到別處）。
-- `code_edit_file` / `code_write_file` **寫入前一定會跳出 diff 審核視窗**，你按「套用」才會真的寫入磁碟，按「拒絕」檔案完全不變、agent 會收到「使用者拒絕」的訊息可以自己調整方案。
-- 只處理合法 UTF-8 文字檔；偵測到二進位/非文字內容一律明確拒絕，不會塞壞資料進對話。
-
-**用法**：設定頁「Coding 工作目錄」選一個資料夾（例如你的專案根目錄）→ 存檔 → 回對話頁點模式切換按鈕切到 **Code 模式** → 直接說「幫我讀一下 xxx.go」或「把 yyy 函式改成……」→ agent 會自己判斷呼叫對的工具 → 修改類操作會先讓你看 diff 再決定套用。改完可以隨時點回 **Normal 模式**，之後的訊息就不會再帶碼工具給 agent。
-
-### 已知限制
-- 這是**輕量版**改碼流程，不是完整 IDE 體驗：本地小模型（如 `gemma4:e4b`，8B 參數）在多檔案、複雜重構任務上的可靠度遠不如雲端大模型；適合單檔小改動、加函式、修 bug 這類任務。
-- 後端 `config.yaml` 的 `tools.max_iterations`（預設 8）是每輪對話的工具呼叫上限；複雜任務（讀→改→驗證多步）可能不夠跑完就被打斷，需要可調大該設定。
+- **CJK 字型自動載入**：Fyne 內建字型無中文字形（且 ParseTTF 不吃 `.ttc` 集合），啟動時載入
+  系統純 TTF（NotoSansTC-VF → simhei → kaiu，可用 `FYNE_FONT` 覆寫）。
+- **字級**：文字類尺寸 × 0.85，接近 Claude Desktop 觀感（padding/icon 不動）。
+- **檔案對話框**：用 Windows 原生檔案總管（comdlg32 `GetOpenFileNameW`，多選 + filter），
+  取代 Fyne 內建版本。
+- **History 按鈕**：先列最近 20 條 session 標題（第一則 `**You:**` 為標題），點一條才開內容。
+- **附加圖片**：縮圖列（`canvas.Image` + 可點包裝），左上 X 移除、點縮圖看原尺寸。
+- **輸入法（IME）已知限制**：Fyne 2.4.5 沒有 IME preedit 支援，中文輸入時組字過程會在 OS 輸入法
+  浮動視窗顯示（不在輸入框內），確認後才進框；修復需升 Fyne 到 2.5+，待決。
 
 ## 注意
-- 對話回合制只在後端 LLM 支援 tool calling（目前 Ollama provider，如 `gemma4:e4b`）時生效；其他 provider 會退回純對話、忽略工具。
-- 圖片上傳需後端 `ingest.vision.enabled=true`（用 Ollama 視覺模型抽文字，如 `qwen3-vl:4b`）；掃描型 PDF 目前不 OCR。
-- 後端預設自簽 TLS（HTTP/2），設定頁的「允許自簽」預設開啟。
+
+- 對話工具回合制只在後端 LLM 支援 tool calling 時生效（目前 Ollama provider）。
+- 圖片辨識（`ChatImage` 與 Upload）需後端 `ingest.vision.enabled=true`；掃描型 PDF 不 OCR。
+- gateway 對外憑證預設可能為自簽 → 設定頁「Allow self-signed」預設開啟；正式部署改成 CA pinning。
+- Fyne GUI 無法在無頭環境驗證 —— 改動 UI 後需實機開視窗確認。
