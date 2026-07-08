@@ -1,10 +1,9 @@
-# pub_client
+# rag_client
 
 外網版 Windows 桌面 client。**所有後端流量都走單一 gRPC 連線**到 `agent_gateway`
 （dev_pub_0.9），gateway 再以內部 mTLS/HTTP 轉發給後端的 agents / agent_graph / agent_embedding。
 
-Go + [Fyne](https://fyne.io) v2.4.5 + HypGo v0.8.11。內網管理版是姊妹專案 `rag_admin/`
-（原名 agent_client，含 Models / Graph Input 等管理面），本專案是外網使用者版，僅保留一般使用者功能。
+Go + [Fyne](https://fyne.io) v2.4.5 + HypGo v0.8.11。本專案是外網使用者版，僅保留一般使用者功能。
 
 ## 網路架構
 
@@ -13,7 +12,7 @@ pub_client
    │ gRPC + TLS
    │ metadata: x-api-key + x-device-id + x-device-info
    ▼
-agent_gateway :9090 (ClientGateway)
+agent_gateway (ClientGateway)
    ├── agents        (Chat / ChatStatus / ChatImage / UploadIngest / GetIngestJob / Personas)
    ├── agent_graph   (GraphSearch / Context / HybridSearch / Proposed×3)
    └── agent_embedding (VerifySearch)
@@ -31,7 +30,7 @@ agent_gateway :9090 (ClientGateway)
 | 對話（狀態列） | `ChatStatus` | 每秒輪詢，顯示 server 正處理的 Agent 1-4 階段（例 `Agent 2 · ToolLoop (3s)`） |
 | 對話（附圖） | `ChatImage` | 送圖 → server 視覺模型抽文字 + ingest 進 RAG，文字併入本輪訊息 |
 | 上傳 | `UploadIngest` (streaming) / `GetIngestJob` | 檔案分塊上傳 + 攝取任務進度輪詢 |
-| 知識圖譜 | `GraphSearch` / `GraphContext` / `GraphHybridSearch` | 關鍵字搜尋 / 語意搜尋 / 區域鄰居 |
+| 知識圖譜 (待優化) | `GraphSearch` / `GraphContext` / `GraphHybridSearch` | 關鍵字搜尋 / 語意搜尋 / 區域鄰居 |
 | 圖譜審核（Pending Relations） | `GraphListProposed` / `GraphApproveProposed` / `GraphRejectProposed` | 人工核准低信心關係 |
 | 驗證檢索（上傳後） | `VerifySearch` | 內部 HTTPS 打 agent_embedding |
 
@@ -49,12 +48,9 @@ agent_gateway :9090 (ClientGateway)
 | **Knowledge Graph** | 進頁即載入最近 15 個實體；關鍵字/語意搜尋、選中查看區域鄰居；Pending Relations 子分頁做人工審核 |
 | **Settings** | Gateway Address、API Key（PasswordEntry）、Agent ID（下拉/自填）、TLS、Coding 工作目錄、溫度、Test Connection |
 
-> **不含**「Models」與「Graph Input」分頁 —— 那是內網 `rag_admin/` 的職責（外網 client 不提供
-> 直接改 persona 模型 / 直接寫圖譜的能力）。
-
 ## 儲存（DuckDB 加密庫）
 
-設定（gateway 位址 / API Key / device_id / 工具清單…）與對話 session 全部存在單一
+本地設定（gateway 位址 / API Key / device_id / 工具清單…）與對話 session 全部存在單一
 **加密 DuckDB 檔** `%APPDATA%\pub_client\store.duckdb`（DuckDB `ATTACH ENCRYPTION_KEY`，AES）。
 金鑰來源優先序：
 1. 機器特徵（`services.StableDeviceID` 同源：SHA-256(MachineGuid+username)）—— 不落地、跨重裝穩定；DB 檔被單獨複製走無法解開
@@ -79,13 +75,13 @@ go test ./...
 
 ## Gateway Address 小提醒
 
-Gateway Address 是 **gRPC** 目標，格式 `host:port`（例 `192.168.50.104:9090`）。若貼上帶 `https://`
+Gateway Address 是 **gRPC** 目標，格式 `host:port` 。若貼上帶 `https://`
 的 URL，client 會自動去掉 scheme 再連（`normalizeGatewayAddr`），避免 gRPC 誤把整串當主機名再補
 `:443` 而報 `too many colons in address`。
 
 ## 本地工具與 Coding Agent
 
-跟 rag_admin 一樣：Tools 頁登錄的本地工具會以 `client_tools` manifest 隨每輪首請求送給 agent；
+Tools 頁登錄的本地工具會以 `client_tools` manifest 隨每輪首請求送給 agent；
 agent 決定呼叫時，client 在本機 `exec.CommandContext` 執行後把結果經 `Chat` 的 continuation 回注。
 Normal/Code 模式切換、內建 Coding Agent（`code_list_files` / `code_search` / `code_read_file` /
 `code_edit_file` / `code_write_file`，寫入前 diff 審核）語意完全一致，詳見 `rag_admin/README.md`。
@@ -108,6 +104,5 @@ Normal/Code 模式切換、內建 Coding Agent（`code_list_files` / `code_searc
 ## 注意
 
 - 對話工具回合制只在後端 LLM 支援 tool calling 時生效（目前 Ollama provider）。
-- 圖片辨識（`ChatImage` 與 Upload）需後端 `ingest.vision.enabled=true`；掃描型 PDF 不 OCR。
+- 圖片辨識（`ChatImage` 與 Upload）需後端 `ingest.vision.enabled=true`；掃描型 PDF 沒 OCR。
 - gateway 對外憑證預設可能為自簽 → 設定頁「Allow self-signed」預設開啟；正式部署改成 CA pinning。
-- Fyne GUI 無法在無頭環境驗證 —— 改動 UI 後需實機開視窗確認。
