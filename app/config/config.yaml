@@ -1,0 +1,6 @@
+# pub_client（桌面 client）runtime 設定。
+# 桌面應用不開 HTTP server，這裡只用 logger 區段；server/database 區段沿用框架預設值，不會被使用。
+logger:
+  level: "info"
+  output: "logs/pub_client.log"
+  color_enabled: true
