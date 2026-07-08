@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package agent_gateway.v1;
+
+option go_package = "agent_gatway/pb/gatewaypb;gatewaypb";
+
+// ClientGateway — dev_pub_0.9 外網部署的唯一 client-facing 介面。
+// pub_client 的全部後端流量（對話/上傳/圖譜/審核/Verify）都收斂到這裡，
+// gateway 再以內部 mTLS 轉發給 agents / agent_graph / agent_embedding。
+//
+// 認證：所有 RPC 都要在 gRPC metadata 帶 `x-api-key` + `x-device-id`；
+// gateway 驗 key（SHA-256 比對 api_keys 表）並做「一 Key 一裝置」TOFU 綁定。
+service ClientGateway {
+  // Ping 供 Test Connection 用，同時驗 API Key 有效性。
+  rpc Ping(PingReq) returns (PingResp);
+
+  // Chat 同步對話（轉發 agents AgentService.Chat；client tools / continuation 全保留）。
+  rpc Chat(ChatReq) returns (ChatResp);
+
+  // UploadIngest 文件攝取上傳（client-streaming；轉發 agents AgentService.UploadIngest）。
+  rpc UploadIngest(stream UploadChunk) returns (UploadAck);
+  rpc GetIngestJob(IngestJobReq) returns (IngestJobResp);
+
+  // Graph*（轉發 agent_graph GraphService）
+  rpc GraphSearch(GraphSearchReq) returns (GraphSearchResp);
+  rpc GraphContext(GraphContextReq) returns (GraphContextResp);
+  rpc GraphHybridSearch(GraphHybridSearchReq) returns (GraphHybridSearchResp);
+  rpc GraphListProposed(GraphListProposedReq) returns (GraphListProposedResp);
+  rpc GraphApproveProposed(GraphReviewProposedReq) returns (GraphProposedRelation);
+  rpc GraphRejectProposed(GraphReviewProposedReq) returns (GraphProposedRelation);
+
+  // VerifySearch 上傳後檢索驗證（gateway 內部 HTTPS 打 agent_embedding /api/search）。
+  rpc VerifySearch(VerifySearchReq) returns (VerifySearchResp);
+}
+
+// ---- Ping ----
+
+message PingReq {}
+message PingResp {
+  string version = 1;      // gateway 版本
+  string key_name = 2;     // 這把 API Key 的名稱（確認打到正確的 key）
+  string server_time = 3;  // RFC3339
+}
+
+// ---- Chat（鏡像 agents 的 ChatTurnReq/Resp；tool payload 用 JSON 字串）----
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message ChatToolSpec {
+  string name = 1;
+  string description = 2;
+  string schema_json = 3;
+}
+
+message ChatToolCall {
+  string id = 1;
+  string name = 2;
+  string args_json = 3;
+}
+
+message ChatToolResult {
+  string tool_call_id = 1;
+  string name = 2;
+  string content = 3;
+  bool is_error = 4;
+}
+
+message TokenUsage {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+  int32 total_tokens = 3;
+}
+
+message ChatReq {
+  string agent_id = 1;
+  string session_id = 2;
+  repeated ChatMessage messages = 3;
+  repeated ChatToolSpec client_tools = 4;
+  string continuation_id = 5;
+  repeated ChatToolResult tool_results = 6;
+  float temperature = 7;
+}
+
+message ChatResp {
+  string status = 1;  // "final" | "tool_calls"
+  string content = 2;
+  string session_id = 3;
+  string continuation_id = 4;
+  repeated ChatToolCall tool_calls = 5;
+  TokenUsage usage = 6;
+}
+
+// ---- Upload / Ingest ----
+
+message UploadMeta {
+  string agent_id = 1;
+  repeated string tags = 2;
+}
+
+message UploadChunk {
+  UploadMeta meta = 1;   // 只在第一則訊息帶
+  string file_name = 2;
+  bytes data = 3;        // 建議 ≤64KB/則
+}
+
+message UploadAck {
+  string job_id = 1;
+  string status = 2;
+}
+
+message IngestJobReq {
+  string job_id = 1;
+}
+
+message IngestJobResp {
+  string id = 1;
+  string status = 2;
+  int32 total_chunks = 3;
+  int32 done_chunks = 4;
+  string error = 5;
+}
+
+// ---- Graph（鏡像 agent_graph 的對應訊息）----
+
+message GraphEntity {
+  string name = 1;
+  string category = 2;
+  string description = 3;
+  string source_file = 4;
+  double score = 5;
+}
+
+message GraphRelation {
+  string source = 1;
+  string target = 2;
+  string type = 3;
+}
+
+message GraphSearchReq {
+  string query = 1;
+  int32 limit = 2;
+}
+message GraphSearchResp {
+  repeated GraphEntity entities = 1;
+}
+
+message GraphContextReq {
+  string entity_name = 1;
+  int32 hops = 2;
+  int32 limit = 3;
+}
+message GraphContextResp {
+  GraphEntity center = 1;
+  repeated GraphEntity neighbors = 2;
+  repeated GraphRelation relations = 3;
+}
+
+message GraphHybridSearchReq {
+  string query = 1;
+  int32 top_k = 2;
+  int32 hops = 3;
+}
+message GraphHybridSearchResp {
+  repeated GraphEntity seeds = 1;
+  repeated GraphContextResp context = 2;
+}
+
+message GraphProposedRelation {
+  string id = 1;
+  string source_entity = 2;
+  string target_entity = 3;
+  string relation_type = 4;
+  double confidence = 5;
+  string source_file = 6;
+  string extracted_by = 7;
+  string status = 8;
+  string created_at = 9;
+}
+
+message GraphListProposedReq {
+  string status = 1; // 空 = pending
+  int32 limit = 2;
+}
+message GraphListProposedResp {
+  repeated GraphProposedRelation relations = 1;
+}
+
+message GraphReviewProposedReq {
+  string id = 1;
+}
+
+// ---- Verify（agent_embedding /api/search）----
+
+message VerifySearchReq {
+  string agent_id = 1;
+  string query = 2;
+  int32 top_k = 3;
+}
+message VerifySearchResp {
+  int32 total = 1;
+}
