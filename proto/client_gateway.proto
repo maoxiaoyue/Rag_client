@@ -5,7 +5,7 @@ package agent_gateway.v1;
 option go_package = "agent_gatway/pb/gatewaypb;gatewaypb";
 
 // ClientGateway — dev_pub_0.9 外網部署的唯一 client-facing 介面。
-// pub_client 的全部後端流量（對話/上傳/圖譜/審核/Verify）都收斂到這裡，
+// pub_client（外網桌面 client）的全部後端流量（對話/上傳/圖譜/審核/Verify）都收斂到這裡，
 // gateway 再以內部 mTLS 轉發給 agents / agent_graph / agent_embedding。
 //
 // 認證：所有 RPC 都要在 gRPC metadata 帶 `x-api-key` + `x-device-id`；
@@ -16,6 +16,18 @@ service ClientGateway {
 
   // Chat 同步對話（轉發 agents AgentService.Chat；client tools / continuation 全保留）。
   rpc Chat(ChatReq) returns (ChatResp);
+
+  // ChatStatus 回報某 session 目前處理到哪個 Agent 階段（client 每秒輪詢，顯示在秒數前）。
+  // gateway 內部 HTTP 打 agents /api/chat/status/:session_id。
+  rpc ChatStatus(ChatStatusReq) returns (ChatStatusResp);
+
+  // ChatImage 對話附加圖片辨識：視覺模型抽文字（供當下對話辨識）+ 同時 ingest 進 RAG。
+  // gateway 內部 HTTP 打 agents /api/chat/image；回傳抽出的文字，client 併進該輪訊息。
+  rpc ChatImage(ChatImageReq) returns (ChatImageResp);
+
+  // Persona 模型設定（轉發 agents /api/personas；client「Models」分頁設定 Agent 1-4 的 model）。
+  rpc ListPersonas(ListPersonasReq) returns (ListPersonasResp);
+  rpc SetPersonaModel(SetPersonaModelReq) returns (PersonaInfo);
 
   // UploadIngest 文件攝取上傳（client-streaming；轉發 agents AgentService.UploadIngest）。
   rpc UploadIngest(stream UploadChunk) returns (UploadAck);
@@ -28,6 +40,11 @@ service ClientGateway {
   rpc GraphListProposed(GraphListProposedReq) returns (GraphListProposedResp);
   rpc GraphApproveProposed(GraphReviewProposedReq) returns (GraphProposedRelation);
   rpc GraphRejectProposed(GraphReviewProposedReq) returns (GraphProposedRelation);
+
+  // Vault*（轉發 agent_graph GraphService.Vault*）：Obsidian vault .md 下載，
+  // client「Sync Vault」把知識庫鏡像到本地資料夾（可用 Obsidian 開）。
+  rpc VaultManifest(VaultManifestReq) returns (VaultManifestResp);
+  rpc VaultFetch(VaultFetchReq) returns (stream VaultFileChunk);
 
   // VerifySearch 上傳後檢索驗證（gateway 內部 HTTPS 打 agent_embedding /api/search）。
   rpc VerifySearch(VerifySearchReq) returns (VerifySearchResp);
@@ -93,6 +110,42 @@ message ChatResp {
   TokenUsage usage = 6;
 }
 
+message ChatStatusReq {
+  string session_id = 1;
+}
+message ChatStatusResp {
+  string stage = 1;   // 目前階段標籤（例 "Agent 2 · ToolLoop"）；active=false 時為空
+  bool active = 2;    // 該 session 是否正在 server 端處理中
+}
+
+message ChatImageReq {
+  string agent_id = 1;
+  string filename = 2;
+  bytes image = 3;    // 原始圖片 bytes
+}
+message ChatImageResp {
+  string text = 1;    // 視覺模型抽出的文字（OCR / 描述）
+}
+
+// ---- Persona 模型設定 ----
+
+message PersonaInfo {
+  string agent_id = 1;
+  string name = 2;
+  string role = 3;     // SKILL.md ## Model 段的 role
+  string model = 4;    // SKILL.md ## Model 段的明確 model tag
+  string role_md = 5;  // 目前 ROLE.md 內容（衍生檔）
+}
+message ListPersonasReq {}
+message ListPersonasResp {
+  repeated PersonaInfo personas = 1;
+}
+message SetPersonaModelReq {
+  string agent_id = 1;
+  string model = 2;
+  string role = 3;
+}
+
 // ---- Upload / Ingest ----
 
 message UploadMeta {
@@ -131,6 +184,7 @@ message GraphEntity {
   string description = 3;
   string source_file = 4;
   double score = 5;
+  int32 degree = 6;  // 全圖關係數（節點大小/關鍵節點判斷用）
 }
 
 message GraphRelation {
@@ -190,6 +244,30 @@ message GraphListProposedResp {
 
 message GraphReviewProposedReq {
   string id = 1;
+}
+
+// ---- Vault（鏡像 agent_graph 的 Vault* 訊息）----
+
+message VaultManifestReq {}
+
+message VaultFileInfo {
+  string path = 1;          // vault 相對路徑（forward slash）
+  int64 size = 2;
+  string sha256 = 3;
+  int64 modified_unix = 4;
+}
+message VaultManifestResp {
+  repeated VaultFileInfo files = 1;
+}
+
+message VaultFetchReq {
+  repeated string paths = 1;
+}
+
+message VaultFileChunk {
+  string path = 1;
+  bytes data = 2;
+  bool eof = 3;
 }
 
 // ---- Verify（agent_embedding /api/search）----

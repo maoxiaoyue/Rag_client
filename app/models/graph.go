@@ -11,7 +11,8 @@ type GraphEntity struct {
 	Category    string  `json:"category,omitempty"`
 	Description string  `json:"description,omitempty"`
 	SourceFile  string  `json:"source_file,omitempty"`
-	Score       float64 `json:"score,omitempty"` // 混合搜尋時填入向量相似度
+	Score       float64 `json:"score,omitempty"`  // 混合搜尋時填入向量相似度
+	Degree      int     `json:"degree,omitempty"` // 全圖關係數（後端回填；節點大小/關鍵節點判斷用）
 }
 
 // GraphRelation 兩個實體之間的一條關係。
@@ -77,4 +78,13 @@ type GraphListProposedRequest struct {
 // GraphReviewProposedRequest POST /api/graph/proposed/{approve,reject} 請求 body。
 type GraphReviewProposedRequest struct {
 	ID string `json:"id"`
+}
+
+// VaultFileInfo Sync Vault 的清單項（對應 gateway VaultManifest）；
+// client 端比對本地檔 sha256 決定要不要下載。
+type VaultFileInfo struct {
+	Path         string `json:"path"` // vault 相對路徑（forward slash）
+	Size         int64  `json:"size"`
+	SHA256       string `json:"sha256"`
+	ModifiedUnix int64  `json:"modified_unix"`
 }

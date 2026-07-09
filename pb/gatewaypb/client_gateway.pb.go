@@ -1300,6 +1300,7 @@ type GraphEntity struct {
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	SourceFile    string                 `protobuf:"bytes,4,opt,name=source_file,json=sourceFile,proto3" json:"source_file,omitempty"`
 	Score         float64                `protobuf:"fixed64,5,opt,name=score,proto3" json:"score,omitempty"`
+	Degree        int32                  `protobuf:"varint,6,opt,name=degree,proto3" json:"degree,omitempty"` // 全圖關係數（節點大小/關鍵節點判斷用）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1365,6 +1366,13 @@ func (x *GraphEntity) GetSourceFile() string {
 func (x *GraphEntity) GetScore() float64 {
 	if x != nil {
 		return x.Score
+	}
+	return 0
+}
+
+func (x *GraphEntity) GetDegree() int32 {
+	if x != nil {
+		return x.Degree
 	}
 	return 0
 }
@@ -2005,6 +2013,258 @@ func (x *GraphReviewProposedReq) GetId() string {
 	return ""
 }
 
+type VaultManifestReq struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VaultManifestReq) Reset() {
+	*x = VaultManifestReq{}
+	mi := &file_client_gateway_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VaultManifestReq) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VaultManifestReq) ProtoMessage() {}
+
+func (x *VaultManifestReq) ProtoReflect() protoreflect.Message {
+	mi := &file_client_gateway_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VaultManifestReq.ProtoReflect.Descriptor instead.
+func (*VaultManifestReq) Descriptor() ([]byte, []int) {
+	return file_client_gateway_proto_rawDescGZIP(), []int{34}
+}
+
+type VaultFileInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"` // vault 相對路徑（forward slash）
+	Size          int64                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	Sha256        string                 `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	ModifiedUnix  int64                  `protobuf:"varint,4,opt,name=modified_unix,json=modifiedUnix,proto3" json:"modified_unix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VaultFileInfo) Reset() {
+	*x = VaultFileInfo{}
+	mi := &file_client_gateway_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VaultFileInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VaultFileInfo) ProtoMessage() {}
+
+func (x *VaultFileInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_client_gateway_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VaultFileInfo.ProtoReflect.Descriptor instead.
+func (*VaultFileInfo) Descriptor() ([]byte, []int) {
+	return file_client_gateway_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *VaultFileInfo) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *VaultFileInfo) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *VaultFileInfo) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *VaultFileInfo) GetModifiedUnix() int64 {
+	if x != nil {
+		return x.ModifiedUnix
+	}
+	return 0
+}
+
+type VaultManifestResp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Files         []*VaultFileInfo       `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VaultManifestResp) Reset() {
+	*x = VaultManifestResp{}
+	mi := &file_client_gateway_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VaultManifestResp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VaultManifestResp) ProtoMessage() {}
+
+func (x *VaultManifestResp) ProtoReflect() protoreflect.Message {
+	mi := &file_client_gateway_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VaultManifestResp.ProtoReflect.Descriptor instead.
+func (*VaultManifestResp) Descriptor() ([]byte, []int) {
+	return file_client_gateway_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *VaultManifestResp) GetFiles() []*VaultFileInfo {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+type VaultFetchReq struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Paths         []string               `protobuf:"bytes,1,rep,name=paths,proto3" json:"paths,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VaultFetchReq) Reset() {
+	*x = VaultFetchReq{}
+	mi := &file_client_gateway_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VaultFetchReq) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VaultFetchReq) ProtoMessage() {}
+
+func (x *VaultFetchReq) ProtoReflect() protoreflect.Message {
+	mi := &file_client_gateway_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VaultFetchReq.ProtoReflect.Descriptor instead.
+func (*VaultFetchReq) Descriptor() ([]byte, []int) {
+	return file_client_gateway_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *VaultFetchReq) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
+}
+
+type VaultFileChunk struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Eof           bool                   `protobuf:"varint,3,opt,name=eof,proto3" json:"eof,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VaultFileChunk) Reset() {
+	*x = VaultFileChunk{}
+	mi := &file_client_gateway_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VaultFileChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VaultFileChunk) ProtoMessage() {}
+
+func (x *VaultFileChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_client_gateway_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VaultFileChunk.ProtoReflect.Descriptor instead.
+func (*VaultFileChunk) Descriptor() ([]byte, []int) {
+	return file_client_gateway_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *VaultFileChunk) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *VaultFileChunk) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *VaultFileChunk) GetEof() bool {
+	if x != nil {
+		return x.Eof
+	}
+	return false
+}
+
 type VerifySearchReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
@@ -2016,7 +2276,7 @@ type VerifySearchReq struct {
 
 func (x *VerifySearchReq) Reset() {
 	*x = VerifySearchReq{}
-	mi := &file_client_gateway_proto_msgTypes[34]
+	mi := &file_client_gateway_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2028,7 +2288,7 @@ func (x *VerifySearchReq) String() string {
 func (*VerifySearchReq) ProtoMessage() {}
 
 func (x *VerifySearchReq) ProtoReflect() protoreflect.Message {
-	mi := &file_client_gateway_proto_msgTypes[34]
+	mi := &file_client_gateway_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2041,7 +2301,7 @@ func (x *VerifySearchReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifySearchReq.ProtoReflect.Descriptor instead.
 func (*VerifySearchReq) Descriptor() ([]byte, []int) {
-	return file_client_gateway_proto_rawDescGZIP(), []int{34}
+	return file_client_gateway_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *VerifySearchReq) GetAgentId() string {
@@ -2074,7 +2334,7 @@ type VerifySearchResp struct {
 
 func (x *VerifySearchResp) Reset() {
 	*x = VerifySearchResp{}
-	mi := &file_client_gateway_proto_msgTypes[35]
+	mi := &file_client_gateway_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2086,7 +2346,7 @@ func (x *VerifySearchResp) String() string {
 func (*VerifySearchResp) ProtoMessage() {}
 
 func (x *VerifySearchResp) ProtoReflect() protoreflect.Message {
-	mi := &file_client_gateway_proto_msgTypes[35]
+	mi := &file_client_gateway_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2099,7 +2359,7 @@ func (x *VerifySearchResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifySearchResp.ProtoReflect.Descriptor instead.
 func (*VerifySearchResp) Descriptor() ([]byte, []int) {
-	return file_client_gateway_proto_rawDescGZIP(), []int{35}
+	return file_client_gateway_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *VerifySearchResp) GetTotal() int32 {
@@ -2205,14 +2465,15 @@ const file_client_gateway_proto_rawDesc = "" +
 	"\ftotal_chunks\x18\x03 \x01(\x05R\vtotalChunks\x12\x1f\n" +
 	"\vdone_chunks\x18\x04 \x01(\x05R\n" +
 	"doneChunks\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error\"\x96\x01\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\"\xae\x01\n" +
 	"\vGraphEntity\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1f\n" +
 	"\vsource_file\x18\x04 \x01(\tR\n" +
 	"sourceFile\x12\x14\n" +
-	"\x05score\x18\x05 \x01(\x01R\x05score\"S\n" +
+	"\x05score\x18\x05 \x01(\x01R\x05score\x12\x16\n" +
+	"\x06degree\x18\x06 \x01(\x05R\x06degree\"S\n" +
 	"\rGraphRelation\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x12\n" +
@@ -2258,14 +2519,27 @@ const file_client_gateway_proto_rawDesc = "" +
 	"\x15GraphListProposedResp\x12E\n" +
 	"\trelations\x18\x01 \x03(\v2'.agent_gateway.v1.GraphProposedRelationR\trelations\"(\n" +
 	"\x16GraphReviewProposedReq\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"W\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x12\n" +
+	"\x10VaultManifestReq\"t\n" +
+	"\rVaultFileInfo\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x03R\x04size\x12\x16\n" +
+	"\x06sha256\x18\x03 \x01(\tR\x06sha256\x12#\n" +
+	"\rmodified_unix\x18\x04 \x01(\x03R\fmodifiedUnix\"J\n" +
+	"\x11VaultManifestResp\x125\n" +
+	"\x05files\x18\x01 \x03(\v2\x1f.agent_gateway.v1.VaultFileInfoR\x05files\"%\n" +
+	"\rVaultFetchReq\x12\x14\n" +
+	"\x05paths\x18\x01 \x03(\tR\x05paths\"J\n" +
+	"\x0eVaultFileChunk\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\x12\x10\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"W\n" +
 	"\x0fVerifySearchReq\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x14\n" +
 	"\x05query\x18\x02 \x01(\tR\x05query\x12\x13\n" +
 	"\x05top_k\x18\x03 \x01(\x05R\x04topK\"(\n" +
 	"\x10VerifySearchResp\x12\x14\n" +
-	"\x05total\x18\x01 \x01(\x05R\x05total2\x9d\n" +
-	"\n" +
+	"\x05total\x18\x01 \x01(\x05R\x05total2\xca\v\n" +
 	"\rClientGateway\x12=\n" +
 	"\x04Ping\x12\x19.agent_gateway.v1.PingReq\x1a\x1a.agent_gateway.v1.PingResp\x12=\n" +
 	"\x04Chat\x12\x19.agent_gateway.v1.ChatReq\x1a\x1a.agent_gateway.v1.ChatResp\x12O\n" +
@@ -2281,7 +2555,10 @@ const file_client_gateway_proto_rawDesc = "" +
 	"\x11GraphHybridSearch\x12&.agent_gateway.v1.GraphHybridSearchReq\x1a'.agent_gateway.v1.GraphHybridSearchResp\x12d\n" +
 	"\x11GraphListProposed\x12&.agent_gateway.v1.GraphListProposedReq\x1a'.agent_gateway.v1.GraphListProposedResp\x12i\n" +
 	"\x14GraphApproveProposed\x12(.agent_gateway.v1.GraphReviewProposedReq\x1a'.agent_gateway.v1.GraphProposedRelation\x12h\n" +
-	"\x13GraphRejectProposed\x12(.agent_gateway.v1.GraphReviewProposedReq\x1a'.agent_gateway.v1.GraphProposedRelation\x12U\n" +
+	"\x13GraphRejectProposed\x12(.agent_gateway.v1.GraphReviewProposedReq\x1a'.agent_gateway.v1.GraphProposedRelation\x12X\n" +
+	"\rVaultManifest\x12\".agent_gateway.v1.VaultManifestReq\x1a#.agent_gateway.v1.VaultManifestResp\x12Q\n" +
+	"\n" +
+	"VaultFetch\x12\x1f.agent_gateway.v1.VaultFetchReq\x1a .agent_gateway.v1.VaultFileChunk0\x01\x12U\n" +
 	"\fVerifySearch\x12!.agent_gateway.v1.VerifySearchReq\x1a\".agent_gateway.v1.VerifySearchRespB%Z#agent_gatway/pb/gatewaypb;gatewaypbb\x06proto3"
 
 var (
@@ -2296,7 +2573,7 @@ func file_client_gateway_proto_rawDescGZIP() []byte {
 	return file_client_gateway_proto_rawDescData
 }
 
-var file_client_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_client_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_client_gateway_proto_goTypes = []any{
 	(*PingReq)(nil),                // 0: agent_gateway.v1.PingReq
 	(*PingResp)(nil),               // 1: agent_gateway.v1.PingResp
@@ -2332,8 +2609,13 @@ var file_client_gateway_proto_goTypes = []any{
 	(*GraphListProposedReq)(nil),   // 31: agent_gateway.v1.GraphListProposedReq
 	(*GraphListProposedResp)(nil),  // 32: agent_gateway.v1.GraphListProposedResp
 	(*GraphReviewProposedReq)(nil), // 33: agent_gateway.v1.GraphReviewProposedReq
-	(*VerifySearchReq)(nil),        // 34: agent_gateway.v1.VerifySearchReq
-	(*VerifySearchResp)(nil),       // 35: agent_gateway.v1.VerifySearchResp
+	(*VaultManifestReq)(nil),       // 34: agent_gateway.v1.VaultManifestReq
+	(*VaultFileInfo)(nil),          // 35: agent_gateway.v1.VaultFileInfo
+	(*VaultManifestResp)(nil),      // 36: agent_gateway.v1.VaultManifestResp
+	(*VaultFetchReq)(nil),          // 37: agent_gateway.v1.VaultFetchReq
+	(*VaultFileChunk)(nil),         // 38: agent_gateway.v1.VaultFileChunk
+	(*VerifySearchReq)(nil),        // 39: agent_gateway.v1.VerifySearchReq
+	(*VerifySearchResp)(nil),       // 40: agent_gateway.v1.VerifySearchResp
 }
 var file_client_gateway_proto_depIdxs = []int32{
 	2,  // 0: agent_gateway.v1.ChatReq.messages:type_name -> agent_gateway.v1.ChatMessage
@@ -2350,41 +2632,46 @@ var file_client_gateway_proto_depIdxs = []int32{
 	22, // 11: agent_gateway.v1.GraphHybridSearchResp.seeds:type_name -> agent_gateway.v1.GraphEntity
 	27, // 12: agent_gateway.v1.GraphHybridSearchResp.context:type_name -> agent_gateway.v1.GraphContextResp
 	30, // 13: agent_gateway.v1.GraphListProposedResp.relations:type_name -> agent_gateway.v1.GraphProposedRelation
-	0,  // 14: agent_gateway.v1.ClientGateway.Ping:input_type -> agent_gateway.v1.PingReq
-	7,  // 15: agent_gateway.v1.ClientGateway.Chat:input_type -> agent_gateway.v1.ChatReq
-	9,  // 16: agent_gateway.v1.ClientGateway.ChatStatus:input_type -> agent_gateway.v1.ChatStatusReq
-	11, // 17: agent_gateway.v1.ClientGateway.ChatImage:input_type -> agent_gateway.v1.ChatImageReq
-	14, // 18: agent_gateway.v1.ClientGateway.ListPersonas:input_type -> agent_gateway.v1.ListPersonasReq
-	16, // 19: agent_gateway.v1.ClientGateway.SetPersonaModel:input_type -> agent_gateway.v1.SetPersonaModelReq
-	18, // 20: agent_gateway.v1.ClientGateway.UploadIngest:input_type -> agent_gateway.v1.UploadChunk
-	20, // 21: agent_gateway.v1.ClientGateway.GetIngestJob:input_type -> agent_gateway.v1.IngestJobReq
-	24, // 22: agent_gateway.v1.ClientGateway.GraphSearch:input_type -> agent_gateway.v1.GraphSearchReq
-	26, // 23: agent_gateway.v1.ClientGateway.GraphContext:input_type -> agent_gateway.v1.GraphContextReq
-	28, // 24: agent_gateway.v1.ClientGateway.GraphHybridSearch:input_type -> agent_gateway.v1.GraphHybridSearchReq
-	31, // 25: agent_gateway.v1.ClientGateway.GraphListProposed:input_type -> agent_gateway.v1.GraphListProposedReq
-	33, // 26: agent_gateway.v1.ClientGateway.GraphApproveProposed:input_type -> agent_gateway.v1.GraphReviewProposedReq
-	33, // 27: agent_gateway.v1.ClientGateway.GraphRejectProposed:input_type -> agent_gateway.v1.GraphReviewProposedReq
-	34, // 28: agent_gateway.v1.ClientGateway.VerifySearch:input_type -> agent_gateway.v1.VerifySearchReq
-	1,  // 29: agent_gateway.v1.ClientGateway.Ping:output_type -> agent_gateway.v1.PingResp
-	8,  // 30: agent_gateway.v1.ClientGateway.Chat:output_type -> agent_gateway.v1.ChatResp
-	10, // 31: agent_gateway.v1.ClientGateway.ChatStatus:output_type -> agent_gateway.v1.ChatStatusResp
-	12, // 32: agent_gateway.v1.ClientGateway.ChatImage:output_type -> agent_gateway.v1.ChatImageResp
-	15, // 33: agent_gateway.v1.ClientGateway.ListPersonas:output_type -> agent_gateway.v1.ListPersonasResp
-	13, // 34: agent_gateway.v1.ClientGateway.SetPersonaModel:output_type -> agent_gateway.v1.PersonaInfo
-	19, // 35: agent_gateway.v1.ClientGateway.UploadIngest:output_type -> agent_gateway.v1.UploadAck
-	21, // 36: agent_gateway.v1.ClientGateway.GetIngestJob:output_type -> agent_gateway.v1.IngestJobResp
-	25, // 37: agent_gateway.v1.ClientGateway.GraphSearch:output_type -> agent_gateway.v1.GraphSearchResp
-	27, // 38: agent_gateway.v1.ClientGateway.GraphContext:output_type -> agent_gateway.v1.GraphContextResp
-	29, // 39: agent_gateway.v1.ClientGateway.GraphHybridSearch:output_type -> agent_gateway.v1.GraphHybridSearchResp
-	32, // 40: agent_gateway.v1.ClientGateway.GraphListProposed:output_type -> agent_gateway.v1.GraphListProposedResp
-	30, // 41: agent_gateway.v1.ClientGateway.GraphApproveProposed:output_type -> agent_gateway.v1.GraphProposedRelation
-	30, // 42: agent_gateway.v1.ClientGateway.GraphRejectProposed:output_type -> agent_gateway.v1.GraphProposedRelation
-	35, // 43: agent_gateway.v1.ClientGateway.VerifySearch:output_type -> agent_gateway.v1.VerifySearchResp
-	29, // [29:44] is the sub-list for method output_type
-	14, // [14:29] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	35, // 14: agent_gateway.v1.VaultManifestResp.files:type_name -> agent_gateway.v1.VaultFileInfo
+	0,  // 15: agent_gateway.v1.ClientGateway.Ping:input_type -> agent_gateway.v1.PingReq
+	7,  // 16: agent_gateway.v1.ClientGateway.Chat:input_type -> agent_gateway.v1.ChatReq
+	9,  // 17: agent_gateway.v1.ClientGateway.ChatStatus:input_type -> agent_gateway.v1.ChatStatusReq
+	11, // 18: agent_gateway.v1.ClientGateway.ChatImage:input_type -> agent_gateway.v1.ChatImageReq
+	14, // 19: agent_gateway.v1.ClientGateway.ListPersonas:input_type -> agent_gateway.v1.ListPersonasReq
+	16, // 20: agent_gateway.v1.ClientGateway.SetPersonaModel:input_type -> agent_gateway.v1.SetPersonaModelReq
+	18, // 21: agent_gateway.v1.ClientGateway.UploadIngest:input_type -> agent_gateway.v1.UploadChunk
+	20, // 22: agent_gateway.v1.ClientGateway.GetIngestJob:input_type -> agent_gateway.v1.IngestJobReq
+	24, // 23: agent_gateway.v1.ClientGateway.GraphSearch:input_type -> agent_gateway.v1.GraphSearchReq
+	26, // 24: agent_gateway.v1.ClientGateway.GraphContext:input_type -> agent_gateway.v1.GraphContextReq
+	28, // 25: agent_gateway.v1.ClientGateway.GraphHybridSearch:input_type -> agent_gateway.v1.GraphHybridSearchReq
+	31, // 26: agent_gateway.v1.ClientGateway.GraphListProposed:input_type -> agent_gateway.v1.GraphListProposedReq
+	33, // 27: agent_gateway.v1.ClientGateway.GraphApproveProposed:input_type -> agent_gateway.v1.GraphReviewProposedReq
+	33, // 28: agent_gateway.v1.ClientGateway.GraphRejectProposed:input_type -> agent_gateway.v1.GraphReviewProposedReq
+	34, // 29: agent_gateway.v1.ClientGateway.VaultManifest:input_type -> agent_gateway.v1.VaultManifestReq
+	37, // 30: agent_gateway.v1.ClientGateway.VaultFetch:input_type -> agent_gateway.v1.VaultFetchReq
+	39, // 31: agent_gateway.v1.ClientGateway.VerifySearch:input_type -> agent_gateway.v1.VerifySearchReq
+	1,  // 32: agent_gateway.v1.ClientGateway.Ping:output_type -> agent_gateway.v1.PingResp
+	8,  // 33: agent_gateway.v1.ClientGateway.Chat:output_type -> agent_gateway.v1.ChatResp
+	10, // 34: agent_gateway.v1.ClientGateway.ChatStatus:output_type -> agent_gateway.v1.ChatStatusResp
+	12, // 35: agent_gateway.v1.ClientGateway.ChatImage:output_type -> agent_gateway.v1.ChatImageResp
+	15, // 36: agent_gateway.v1.ClientGateway.ListPersonas:output_type -> agent_gateway.v1.ListPersonasResp
+	13, // 37: agent_gateway.v1.ClientGateway.SetPersonaModel:output_type -> agent_gateway.v1.PersonaInfo
+	19, // 38: agent_gateway.v1.ClientGateway.UploadIngest:output_type -> agent_gateway.v1.UploadAck
+	21, // 39: agent_gateway.v1.ClientGateway.GetIngestJob:output_type -> agent_gateway.v1.IngestJobResp
+	25, // 40: agent_gateway.v1.ClientGateway.GraphSearch:output_type -> agent_gateway.v1.GraphSearchResp
+	27, // 41: agent_gateway.v1.ClientGateway.GraphContext:output_type -> agent_gateway.v1.GraphContextResp
+	29, // 42: agent_gateway.v1.ClientGateway.GraphHybridSearch:output_type -> agent_gateway.v1.GraphHybridSearchResp
+	32, // 43: agent_gateway.v1.ClientGateway.GraphListProposed:output_type -> agent_gateway.v1.GraphListProposedResp
+	30, // 44: agent_gateway.v1.ClientGateway.GraphApproveProposed:output_type -> agent_gateway.v1.GraphProposedRelation
+	30, // 45: agent_gateway.v1.ClientGateway.GraphRejectProposed:output_type -> agent_gateway.v1.GraphProposedRelation
+	36, // 46: agent_gateway.v1.ClientGateway.VaultManifest:output_type -> agent_gateway.v1.VaultManifestResp
+	38, // 47: agent_gateway.v1.ClientGateway.VaultFetch:output_type -> agent_gateway.v1.VaultFileChunk
+	40, // 48: agent_gateway.v1.ClientGateway.VerifySearch:output_type -> agent_gateway.v1.VerifySearchResp
+	32, // [32:49] is the sub-list for method output_type
+	15, // [15:32] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_client_gateway_proto_init() }
@@ -2398,7 +2685,7 @@ func file_client_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_client_gateway_proto_rawDesc), len(file_client_gateway_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   36,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

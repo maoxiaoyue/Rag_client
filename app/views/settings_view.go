@@ -35,24 +35,34 @@ func settingsTab(st *State) *container.Scroll {
 	insecure := widget.NewCheck("Allow self-signed / skip TLS verification", nil)
 	insecure.SetChecked(st.Cfg.InsecureTLS)
 
+	// folderPickerRow 資料夾輸入 + Browse 按鈕（Coding Workspace 與 Vault Folder 共用樣式）。
+	folderPickerRow := func(entry *widget.Entry, initial string) fyne.CanvasObject {
+		browse := widget.NewButton("Browse...", func() {
+			fd := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
+				if err != nil || uri == nil {
+					return
+				}
+				entry.SetText(uri.Path())
+			}, st.Win)
+			if initial != "" {
+				if listable, err := storage.ListerForURI(storage.NewFileURI(initial)); err == nil {
+					fd.SetLocation(listable)
+				}
+			}
+			fd.Show()
+		})
+		return container.NewBorder(nil, nil, nil, browse, entry)
+	}
+
 	workspaceEntry := widget.NewEntry()
 	workspaceEntry.SetText(st.Cfg.WorkspaceRoot)
 	workspaceEntry.SetPlaceHolder("Leave empty to disable file read/edit tools")
-	browseBtn := widget.NewButton("Browse...", func() {
-		fd := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
-			if err != nil || uri == nil {
-				return
-			}
-			workspaceEntry.SetText(uri.Path())
-		}, st.Win)
-		if st.Cfg.WorkspaceRoot != "" {
-			if listable, err := storage.ListerForURI(storage.NewFileURI(st.Cfg.WorkspaceRoot)); err == nil {
-				fd.SetLocation(listable)
-			}
-		}
-		fd.Show()
-	})
-	workspaceRow := container.NewBorder(nil, nil, nil, browseBtn, workspaceEntry)
+	workspaceRow := folderPickerRow(workspaceEntry, st.Cfg.WorkspaceRoot)
+
+	vaultEntry := widget.NewEntry()
+	vaultEntry.SetText(st.Cfg.VaultDir)
+	vaultEntry.SetPlaceHolder("Local folder for Sync Vault downloads (open it with Obsidian)")
+	vaultRow := folderPickerRow(vaultEntry, st.Cfg.VaultDir)
 
 	tempValue := widget.NewLabel(fmt.Sprintf("%.2f", st.Cfg.Temperature))
 	tempSlider := widget.NewSlider(0, 1)
@@ -65,12 +75,16 @@ func settingsTab(st *State) *container.Scroll {
 
 	pathLabel := widget.NewLabel("Encrypted store: " + store.StorePath())
 
+	vaultItem := widget.NewFormItem("Vault Folder", vaultRow)
+	vaultItem.HintText = "Knowledge Graph tab's Sync Vault downloads the server-side Obsidian vault here"
+
 	form := widget.NewForm(
 		widget.NewFormItem("Gateway Address", gatewayEntry),
 		widget.NewFormItem("API Key", apiKeyEntry),
 		widget.NewFormItem("RAG ID", agentEntry),
 		widget.NewFormItem("TLS", insecure),
 		widget.NewFormItem("Coding Workspace", workspaceRow),
+		vaultItem,
 		tempItem,
 	)
 
@@ -81,6 +95,7 @@ func settingsTab(st *State) *container.Scroll {
 		st.Cfg.RememberAgentID(st.Cfg.AgentID)
 		st.Cfg.InsecureTLS = insecure.Checked
 		st.Cfg.WorkspaceRoot = workspaceEntry.Text
+		st.Cfg.VaultDir = strings.TrimSpace(vaultEntry.Text)
 		st.Cfg.Temperature = float32(tempSlider.Value)
 		st.RebuildClient()
 		st.SaveConfig()

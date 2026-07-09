@@ -42,6 +42,7 @@ type Config struct {
 	InsecureTLS   bool       `json:"insecure_tls"` // 自簽憑證時需開（正式上線改 CA pinning）
 	Tools         []ToolSpec `json:"tools"`
 	WorkspaceRoot string     `json:"workspace_root,omitempty"` // 內建 Coding Agent 工具的根目錄；空 = 停用該功能
+	VaultDir      string     `json:"vault_dir,omitempty"`      // Sync Vault 下載目的資料夾（可用 Obsidian 開）；空 = 功能停用
 	Temperature   float32    `json:"temperature,omitempty"`    // 對話取樣溫度（0–1）；0 = 用 server 預設
 	// KnownAgentIDs 用過的 RAG ID 清單（多 persona 部署時供下拉快速切換）。
 	KnownAgentIDs []string `json:"known_agent_ids,omitempty"`
