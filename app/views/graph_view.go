@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"pub_client/app/models"
+	"pub_client/app/services"
 )
 
 // graphTab 知識圖譜頁：Explore（搜尋 + 區域圖視覺化）與 Pending Relations（待審關係審核）兩個子分頁。
@@ -63,8 +63,14 @@ func graphExploreView(st *State) fyne.CanvasObject {
 	centerLabel := widget.NewRichTextFromMarkdown("*Select a result on the left to see details*")
 	centerLabel.Wrapping = fyne.TextWrapWord
 
-	graphHolder := container.NewStack(container.NewCenter(
-		widget.NewLabel("Select a result to see its neighborhood graph")))
+	var loadContext func(entityName string)
+
+	// 力導向圖 widget（Obsidian graph view 風格：拖曳節點、pan、zoom、physics）。
+	// onSelect 用閉包延後綁到 loadContext（loadContext 在下面才定義）。
+	gw := newGraphWidget(func(name string) { loadContext(name) })
+	graphHint := container.NewCenter(widget.NewLabel(
+		"Search and select a result to see its neighborhood graph"))
+	graphOverlay := container.NewStack(gw, graphHint)
 
 	relationsList := widget.NewList(
 		func() int { return 0 },
@@ -72,8 +78,6 @@ func graphExploreView(st *State) fyne.CanvasObject {
 		func(widget.ListItemID, fyne.CanvasObject) {},
 	)
 	var relations []models.GraphRelation
-
-	var loadContext func(entityName string)
 
 	showContext := func(ctxResult models.GraphContext) {
 		center := ctxResult.Center
@@ -100,9 +104,11 @@ func graphExploreView(st *State) fyne.CanvasObject {
 		}
 		relationsList.Refresh()
 
-		// §5.2：放射狀 node-edge 圖，點鄰居節點跳轉重新查詢。
-		graphHolder.Objects = []fyne.CanvasObject{graphCanvas(ctxResult, func(name string) { loadContext(name) })}
-		graphHolder.Refresh()
+		// 首次載入後隱藏提示文字，讓 graphWidget 全屏顯示。
+		if graphHint.Visible() {
+			graphHint.Hide()
+		}
+		gw.SetContext(ctxResult)
 	}
 
 	loadContext = func(entityName string) {
@@ -164,8 +170,16 @@ func graphExploreView(st *State) fyne.CanvasObject {
 				return
 			}
 			results = entities
-			statusLabel.SetText(fmt.Sprintf("%d results", len(results)))
 			resultList.Refresh()
+			// 自動選取「最接近搜尋結果的關鍵節點」：相關性 × 連結度最高的實體，
+			// 選取即觸發 loadContext，圖譜直接跳到該節點的鄰域。
+			if key := keyNodeIndex(results); key >= 0 {
+				resultList.Select(key)
+				statusLabel.SetText(fmt.Sprintf("%d results — key node: %s (degree %d)",
+					len(results), results[key].Name, results[key].Degree))
+			} else {
+				statusLabel.SetText(fmt.Sprintf("%d results", len(results)))
+			}
 		}()
 	}
 
@@ -183,12 +197,69 @@ func graphExploreView(st *State) fyne.CanvasObject {
 
 	left := container.NewBorder(searchBar, statusLabel, nil, nil, resultList)
 
+	// 圖區上方的控制列：兩顆快捷按鈕 + 三條 Force 滑桿（Obsidian graph view 的
+	// Forces 面板小巧化版本）。滑桿即時更新 graphWidget 內的物理參數。
+	mkSlider := func(min, max, val float64, onChange func(float64)) *widget.Slider {
+		s := widget.NewSlider(min, max)
+		s.Step = (max - min) / 100
+		s.Value = val
+		s.OnChanged = onChange
+		return s
+	}
+	fitBtn := widget.NewButton("Fit", gw.ZoomFit)
+	resetBtn := widget.NewButton("Reset", gw.ResetLayout)
+
+	// Sync Vault：把 server 端 Obsidian vault 的 .md 單向 pull 到設定頁指定的
+	// 本地資料夾（增量：只抓 sha256 不同的檔），下載完可直接用 Obsidian 開。
+	var syncBtn *widget.Button
+	syncBtn = widget.NewButton("Sync Vault", func() {
+		if strings.TrimSpace(st.Cfg.VaultDir) == "" {
+			dialog.ShowInformation("Vault folder not set",
+				"Set the Vault Folder on the Settings tab first — Sync Vault downloads the knowledge-base notes there.",
+				st.Win)
+			return
+		}
+		syncBtn.Disable()
+		go func() {
+			defer syncBtn.Enable()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			res, err := services.SyncVault(ctx, st.Gateway, st.Cfg.VaultDir,
+				func(msg string) { statusLabel.SetText(msg) })
+			if err != nil {
+				statusLabel.SetText("Vault sync failed: " + err.Error())
+				return
+			}
+			statusLabel.SetText(fmt.Sprintf("Vault synced: %d downloaded, %d unchanged (%d total) → %s",
+				res.Downloaded, res.Unchanged, res.Total, st.Cfg.VaultDir))
+		}()
+	})
+
+	repelSlider := mkSlider(500, 30000, defaultRepel, gw.SetRepel)
+	springSlider := mkSlider(0.005, 0.3, defaultSpringK, gw.SetSpringK)
+	distSlider := mkSlider(30, 300, defaultSpringLen, gw.SetSpringLen)
+
+	sliderWithLabel := func(name string, s *widget.Slider) fyne.CanvasObject {
+		// Grid 給 label 固定寬度，讓三條滑桿對齊
+		return container.NewGridWithColumns(2, widget.NewLabel(name), s)
+	}
+	controlsBar := container.NewBorder(nil, nil,
+		container.NewHBox(fitBtn, resetBtn, syncBtn, widget.NewSeparator()),
+		nil,
+		container.NewGridWithColumns(3,
+			sliderWithLabel("Repel", repelSlider),
+			sliderWithLabel("Spring", springSlider),
+			sliderWithLabel("Dist", distSlider),
+		),
+	)
+	graphContainer := container.NewBorder(controlsBar, nil, nil, nil, graphOverlay)
+
 	details := container.NewVSplit(
 		container.NewVScroll(centerLabel),
 		container.NewBorder(widget.NewLabel("Relations"), nil, nil, nil, relationsList),
 	)
-	right := container.NewVSplit(graphHolder, details)
-	right.Offset = 0.55
+	right := container.NewVSplit(graphContainer, details)
+	right.Offset = 0.6
 
 	// 進入分頁先載入幾筆實體，避免一開始空白（空 query 的 CONTAINS "" 命中全部，取前 N）。
 	go func() {
@@ -212,79 +283,6 @@ func graphExploreView(st *State) fyne.CanvasObject {
 	split := container.NewHSplit(left, right)
 	split.Offset = 0.3
 	return split
-}
-
-// graphCanvas 把區域圖遍歷結果畫成放射狀 node-edge 圖：中心實體置中、鄰居環狀排列、
-// 關係畫成連線（兩端都有畫出來的才畫）。點鄰居節點觸發 onSelect 以該實體重新查詢。
-func graphCanvas(ctxResult models.GraphContext, onSelect func(name string)) fyne.CanvasObject {
-	const (
-		width    = float32(680)
-		height   = float32(460)
-		radius   = 165.0
-		maxNodes = 16 // 超過就不畫（環狀排列擠不下），以註記代替
-	)
-	inner := container.NewWithoutLayout()
-	centerPos := fyne.NewPos(width/2, height/2)
-
-	neighbors := ctxResult.Neighbors
-	note := ""
-	if len(neighbors) > maxNodes {
-		note = fmt.Sprintf("(+%d more neighbors not drawn)", len(neighbors)-maxNodes)
-		neighbors = neighbors[:maxNodes]
-	}
-
-	pos := map[string]fyne.Position{ctxResult.Center.Name: centerPos}
-	for i, nb := range neighbors {
-		angle := 2 * math.Pi * float64(i) / float64(len(neighbors))
-		pos[nb.Name] = fyne.NewPos(
-			centerPos.X+float32(radius*math.Cos(angle)),
-			centerPos.Y+float32(radius*math.Sin(angle)),
-		)
-	}
-
-	// 邊要先畫（在按鈕下層）。
-	for _, r := range ctxResult.Relations {
-		p1, ok1 := pos[r.Source]
-		p2, ok2 := pos[r.Target]
-		if !ok1 || !ok2 {
-			continue
-		}
-		line := canvas.NewLine(theme.DisabledColor())
-		line.StrokeWidth = 1
-		line.Position1, line.Position2 = p1, p2
-		inner.Add(line)
-	}
-
-	nodeBtn := func(name string, w float32, imp widget.Importance, tap func()) *widget.Button {
-		label := name
-		if r := []rune(label); len(r) > 18 {
-			label = string(r[:17]) + "…"
-		}
-		b := widget.NewButton(label, tap)
-		b.Importance = imp
-		b.Resize(fyne.NewSize(w, 30))
-		return b
-	}
-
-	for _, nb := range neighbors {
-		name := nb.Name
-		b := nodeBtn(name, 120, widget.MediumImportance, func() { onSelect(name) })
-		p := pos[name]
-		b.Move(fyne.NewPos(p.X-60, p.Y-15))
-		inner.Add(b)
-	}
-	centerBtn := nodeBtn(ctxResult.Center.Name, 150, widget.HighImportance, nil)
-	centerBtn.Move(fyne.NewPos(centerPos.X-75, centerPos.Y-15))
-	inner.Add(centerBtn)
-
-	if note != "" {
-		noteLabel := widget.NewLabel(note)
-		noteLabel.Move(fyne.NewPos(8, height-34))
-		inner.Add(noteLabel)
-	}
-
-	// GridWrap 給自由佈局容器一個固定 MinSize，外層 Scroll 負責視窗小於畫布時的捲動。
-	return container.NewScroll(container.NewGridWrap(fyne.NewSize(width, height), inner))
 }
 
 // ── Pending Relations 子分頁（§5.3）─────────────────────────────────────────
@@ -396,4 +394,22 @@ func orPlaceholder(s, placeholder string) string {
 		return placeholder
 	}
 	return s
+}
+
+// keyNodeIndex 挑「最接近搜尋結果的關鍵節點」：相關性 ×（1 + ln(1+全圖 degree)）
+// 最高者。語意搜尋用向量相似度當相關性；關鍵字搜尋沒有分數（score=0）視為同分，
+// 等同純比連結度。無結果回 -1。
+func keyNodeIndex(entities []models.GraphEntity) int {
+	best, bestRank := -1, -1.0
+	for i, e := range entities {
+		score := e.Score
+		if score <= 0 {
+			score = 1
+		}
+		rank := score * (1 + math.Log1p(float64(e.Degree)))
+		if rank > bestRank {
+			best, bestRank = i, rank
+		}
+	}
+	return best
 }

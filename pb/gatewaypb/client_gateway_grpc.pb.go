@@ -33,6 +33,8 @@ const (
 	ClientGateway_GraphListProposed_FullMethodName    = "/agent_gateway.v1.ClientGateway/GraphListProposed"
 	ClientGateway_GraphApproveProposed_FullMethodName = "/agent_gateway.v1.ClientGateway/GraphApproveProposed"
 	ClientGateway_GraphRejectProposed_FullMethodName  = "/agent_gateway.v1.ClientGateway/GraphRejectProposed"
+	ClientGateway_VaultManifest_FullMethodName        = "/agent_gateway.v1.ClientGateway/VaultManifest"
+	ClientGateway_VaultFetch_FullMethodName           = "/agent_gateway.v1.ClientGateway/VaultFetch"
 	ClientGateway_VerifySearch_FullMethodName         = "/agent_gateway.v1.ClientGateway/VerifySearch"
 )
 
@@ -70,6 +72,10 @@ type ClientGatewayClient interface {
 	GraphListProposed(ctx context.Context, in *GraphListProposedReq, opts ...grpc.CallOption) (*GraphListProposedResp, error)
 	GraphApproveProposed(ctx context.Context, in *GraphReviewProposedReq, opts ...grpc.CallOption) (*GraphProposedRelation, error)
 	GraphRejectProposed(ctx context.Context, in *GraphReviewProposedReq, opts ...grpc.CallOption) (*GraphProposedRelation, error)
+	// Vault*（轉發 agent_graph GraphService.Vault*）：Obsidian vault .md 下載，
+	// client「Sync Vault」把知識庫鏡像到本地資料夾（可用 Obsidian 開）。
+	VaultManifest(ctx context.Context, in *VaultManifestReq, opts ...grpc.CallOption) (*VaultManifestResp, error)
+	VaultFetch(ctx context.Context, in *VaultFetchReq, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VaultFileChunk], error)
 	// VerifySearch 上傳後檢索驗證（gateway 內部 HTTPS 打 agent_embedding /api/search）。
 	VerifySearch(ctx context.Context, in *VerifySearchReq, opts ...grpc.CallOption) (*VerifySearchResp, error)
 }
@@ -225,6 +231,35 @@ func (c *clientGatewayClient) GraphRejectProposed(ctx context.Context, in *Graph
 	return out, nil
 }
 
+func (c *clientGatewayClient) VaultManifest(ctx context.Context, in *VaultManifestReq, opts ...grpc.CallOption) (*VaultManifestResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VaultManifestResp)
+	err := c.cc.Invoke(ctx, ClientGateway_VaultManifest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientGatewayClient) VaultFetch(ctx context.Context, in *VaultFetchReq, opts ...grpc.CallOption) (grpc.ServerStreamingClient[VaultFileChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ClientGateway_ServiceDesc.Streams[1], ClientGateway_VaultFetch_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[VaultFetchReq, VaultFileChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClientGateway_VaultFetchClient = grpc.ServerStreamingClient[VaultFileChunk]
+
 func (c *clientGatewayClient) VerifySearch(ctx context.Context, in *VerifySearchReq, opts ...grpc.CallOption) (*VerifySearchResp, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(VerifySearchResp)
@@ -269,6 +304,10 @@ type ClientGatewayServer interface {
 	GraphListProposed(context.Context, *GraphListProposedReq) (*GraphListProposedResp, error)
 	GraphApproveProposed(context.Context, *GraphReviewProposedReq) (*GraphProposedRelation, error)
 	GraphRejectProposed(context.Context, *GraphReviewProposedReq) (*GraphProposedRelation, error)
+	// Vault*（轉發 agent_graph GraphService.Vault*）：Obsidian vault .md 下載，
+	// client「Sync Vault」把知識庫鏡像到本地資料夾（可用 Obsidian 開）。
+	VaultManifest(context.Context, *VaultManifestReq) (*VaultManifestResp, error)
+	VaultFetch(*VaultFetchReq, grpc.ServerStreamingServer[VaultFileChunk]) error
 	// VerifySearch 上傳後檢索驗證（gateway 內部 HTTPS 打 agent_embedding /api/search）。
 	VerifySearch(context.Context, *VerifySearchReq) (*VerifySearchResp, error)
 	mustEmbedUnimplementedClientGatewayServer()
@@ -322,6 +361,12 @@ func (UnimplementedClientGatewayServer) GraphApproveProposed(context.Context, *G
 }
 func (UnimplementedClientGatewayServer) GraphRejectProposed(context.Context, *GraphReviewProposedReq) (*GraphProposedRelation, error) {
 	return nil, status.Error(codes.Unimplemented, "method GraphRejectProposed not implemented")
+}
+func (UnimplementedClientGatewayServer) VaultManifest(context.Context, *VaultManifestReq) (*VaultManifestResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method VaultManifest not implemented")
+}
+func (UnimplementedClientGatewayServer) VaultFetch(*VaultFetchReq, grpc.ServerStreamingServer[VaultFileChunk]) error {
+	return status.Error(codes.Unimplemented, "method VaultFetch not implemented")
 }
 func (UnimplementedClientGatewayServer) VerifySearch(context.Context, *VerifySearchReq) (*VerifySearchResp, error) {
 	return nil, status.Error(codes.Unimplemented, "method VerifySearch not implemented")
@@ -588,6 +633,35 @@ func _ClientGateway_GraphRejectProposed_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClientGateway_VaultManifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VaultManifestReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientGatewayServer).VaultManifest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClientGateway_VaultManifest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientGatewayServer).VaultManifest(ctx, req.(*VaultManifestReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientGateway_VaultFetch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(VaultFetchReq)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClientGatewayServer).VaultFetch(m, &grpc.GenericServerStream[VaultFetchReq, VaultFileChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClientGateway_VaultFetchServer = grpc.ServerStreamingServer[VaultFileChunk]
+
 func _ClientGateway_VerifySearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(VerifySearchReq)
 	if err := dec(in); err != nil {
@@ -666,6 +740,10 @@ var ClientGateway_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ClientGateway_GraphRejectProposed_Handler,
 		},
 		{
+			MethodName: "VaultManifest",
+			Handler:    _ClientGateway_VaultManifest_Handler,
+		},
+		{
 			MethodName: "VerifySearch",
 			Handler:    _ClientGateway_VerifySearch_Handler,
 		},
@@ -675,6 +753,11 @@ var ClientGateway_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "UploadIngest",
 			Handler:       _ClientGateway_UploadIngest_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "VaultFetch",
+			Handler:       _ClientGateway_VaultFetch_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "client_gateway.proto",

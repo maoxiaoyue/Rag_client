@@ -6,6 +6,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -83,8 +84,28 @@ func (c *GatewayClient) authCtx(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		"x-api-key", c.apiKey,
 		"x-device-id", c.deviceID,
-		"x-device-info", host,
+		"x-device-info", sanitizeHeaderValue(host),
 	)
+}
+
+// sanitizeHeaderValue 過濾成 printable ASCII (0x20-0x7e)。
+// gRPC over HTTP/2 規定 metadata value 只能是 printable ASCII——中文 Windows
+// 電腦名（如「HUI 的電腦」）直接送會被 server 端擋成 codes.Internal。
+// 非 ASCII 字元一律 drop（UTF-8 多位元組序列也整組丟）。
+// 完全被清空時退回 "unknown"，避免 gateway 端 device 綁定紀錄空白。
+func sanitizeHeaderValue(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x20 && c <= 0x7e {
+			b.WriteByte(c)
+		}
+	}
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return "unknown"
+	}
+	return out
 }
 
 // ---- Ping（Test Connection，兼驗 API Key）----
@@ -285,7 +306,7 @@ func gwToEntity(e *gatewaypb.GraphEntity) models.GraphEntity {
 	}
 	return models.GraphEntity{
 		Name: e.GetName(), Category: e.GetCategory(), Description: e.GetDescription(),
-		SourceFile: e.GetSourceFile(), Score: e.GetScore(),
+		SourceFile: e.GetSourceFile(), Score: e.GetScore(), Degree: int(e.GetDegree()),
 	}
 }
 
@@ -378,6 +399,62 @@ func (c *GatewayClient) RejectProposed(ctx context.Context, id string) (models.G
 		return models.GraphProposedRelation{}, err
 	}
 	return gwToProposed(p), nil
+}
+
+// ---- Vault（Sync Vault：manifest 差異比對 + server-streaming 下載）----
+
+// VaultManifest 取得 server 端 vault 全部 .md 清單（含 sha256）。
+func (c *GatewayClient) VaultManifest(ctx context.Context) ([]models.VaultFileInfo, error) {
+	resp, err := c.client.VaultManifest(c.authCtx(ctx), &gatewaypb.VaultManifestReq{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.VaultFileInfo, 0, len(resp.GetFiles()))
+	for _, f := range resp.GetFiles() {
+		out = append(out, models.VaultFileInfo{
+			Path: f.GetPath(), Size: f.GetSize(), SHA256: f.GetSha256(), ModifiedUnix: f.GetModifiedUnix(),
+		})
+	}
+	return out, nil
+}
+
+// FetchVaultFiles 下載指定 vault 檔（server-streaming）。每收滿一個檔（eof chunk）
+// 就呼叫 onFile 交付完整內容；onFile 回錯即中止整個下載。
+func (c *GatewayClient) FetchVaultFiles(ctx context.Context, paths []string, onFile func(path string, data []byte) error) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	stream, err := c.client.VaultFetch(c.authCtx(ctx), &gatewaypb.VaultFetchReq{Paths: paths})
+	if err != nil {
+		return err
+	}
+	buffers := make(map[string]*bytes.Buffer)
+	for {
+		chunk, rerr := stream.Recv()
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+		p := chunk.GetPath()
+		if chunk.GetEof() {
+			buf := buffers[p]
+			delete(buffers, p)
+			var data []byte
+			if buf != nil {
+				data = buf.Bytes()
+			}
+			if ferr := onFile(p, data); ferr != nil {
+				return ferr
+			}
+			continue
+		}
+		if buffers[p] == nil {
+			buffers[p] = &bytes.Buffer{}
+		}
+		buffers[p].Write(chunk.GetData())
+	}
 }
 
 // ---- Verify（介面對齊舊 EmbeddingClient.SearchCount）----
