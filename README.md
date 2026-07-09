@@ -5,8 +5,7 @@
 
 Go + [Fyne](https://fyne.io) v2.4.5 + HypGo v0.8.11。本專案是外網使用者版，僅保留一般使用者功能。
 
-範例:
-[螢幕擷取畫面 2026-07-07 185608.png]
+範例圖片((https://raw.githubusercontent.com/maoxiaoyue/Rag_client/refs/heads/main/螢幕擷取畫面%202026-07-07%20185608.png)
 ## 網路架構
 
 ```
